@@ -10,13 +10,13 @@
 ThingReserver.prototype = {
 	
 	R_TABLE : "x_bn_reservation",
-    T_TABLE : "x_bn_thing",
+	T_TABLE : "x_bn_thing",
 	
-    initialize: function() {
-    },
+	initialize: function() {
+	},
 	
 	canReserve : function(/*GlideRecord*/ thing, /*GlideDateTime*/ from, /*GlideDateTime*/ until, /*User sys_id*/ by) {
-
+		
 		if (!this._hasRequiredParams(thing, from, until, by))
 			return false;
 		
@@ -24,7 +24,21 @@ ThingReserver.prototype = {
 			by = gs.getUserID();
 		
 		gs.debug("Checking by date.");
-
+		var canReserve = true;
+		try {
+			var eps = new GlideScriptedExtensionPoint().getExtensions("CanReserve");
+			eps.forEach(function(ep) {
+				if (ep.handles(thing)) {
+					canReserve = ep.canReserve(thing, from, until, by);
+				}
+			});
+		} catch (ex) {
+			gs.error("Error running ShouldAllow extension points!");
+		}
+		
+		if (!canReserve)
+			return false;
+		
 		var reservations = new GlideRecord(this.R_TABLE);
 		reservations.addQuery("thing", thing.getUniqueValue());
 		reservations.addQuery("thing_table", thing.getRecordClassName());
@@ -45,7 +59,7 @@ ThingReserver.prototype = {
 	},
 	
 	reserve : function(/*GlideRecord*/ thing, /*GlideDateTime*/ from, /*GlideDateTime*/ until, /*sys_id*/ by) {
-
+		
 		if (!this.canReserve(thing, from, until, by)) {
 			return false;
 		}
@@ -59,85 +73,85 @@ ThingReserver.prototype = {
 		newReservation.setValue("reserved_by", by);
 		
 		gs.debug("Inserting new reservation for {0} from {1} until {2}", thing.getDisplayValue(), from.getValue(), until.getValue());
-		
-		if (newReservation.insert())
-			return newReservation;
-		
-		gs.debug("Insert of new reservation failed {0}", newReservation.getLastErrorMessage());
-		return false;
-	},
-	
-	cancelReservation : function(/*GlideRecord*/ thing, /*GlideDateTime*/ from, /*GlideDateTime*/ until, /*sys_id*/ by) {
-		
-		var reservation = new GlideRecord(this.R_TABLE);
-		reservation.addQuery("thing", thing.getValue("sys_id"));
-		reservation.addQuery("thing_table", thing.getRecordClassName());
-		reservation.addQuery("reserved_from", from.toString());
-		reservation.addQuery("reserved_to", until.toString());
-		reservation.addQuery("reserved_by", by.getValue("sys_id"));
-		reservation.query();
-		
-		if (reservation.next()) {
-			var thing_id = reservation.getValue("thing");
-			var thing_table = reservation.getValue("thing_table");
-			reservation.deleteRecord();
-		}
-	},
-	
-	nextAvailableReservation : function(/*GlideRecord*/ thing) {
-		
-		//this is a really simplistic model that just returns 5 minutes later than the end date for the last reservation
-		var reservation = new GlideRecord(this.R_TABLE);
-		reservation.addQuery("thing", thing.getUniqueValue());
-		reservation.addQuery("thing_table", thing.getRecordClassName());
-		reservation.addQuery("reserved_to", ">", new GlideDateTime());
-		reservation.orderByDesc("reserved_to");
-		reservation.query();
-		
-		if (reservation.hasNext()) {
-			var minimum_seconds = parseInt(gs.getProperty("x_bn.min_reservation_seconds", 300), 10);
-			var hasUntil = new GlideDateTime();
-			hasUntil.setNumericValue(reservation.reserved_to.getNumericValue());
-			hasUntil.addSeconds(minimum_seconds);
 			
-			return hasUntil;
-		}
-		
-		//or right now, if the thing has never been reserved or all reservations are in the past
-		return new GlideDateTime();
-	},
-	
-	_hasRequiredParams : function(/*GlideRecord*/ thing, /*GlideDateTime*/ from, /*GlideDateTime*/ until, /*User sys_id*/ by) {
-		
-		//values provided?
-		if (!thing || !from || !until)
-			return false;
-
-		if (!(thing instanceof GlideRecord) && !(thing instanceof GlideRecordSecure))
-			return false;
-		
-		if (!(from instanceof GlideDateTime))
-			return false;
-		
-		if (!(until instanceof GlideDateTime))
-			return false;
-		
-		return true;
-	},
-
-    type: 'ThingReserver'
-};]]></script>
+			if (newReservation.insert())
+				return newReservation;
+			
+			gs.debug("Insert of new reservation failed {0}", newReservation.getLastErrorMessage());
+				return false;
+			},
+			
+			cancelReservation : function(/*GlideRecord*/ thing, /*GlideDateTime*/ from, /*GlideDateTime*/ until, /*sys_id*/ by) {
+				
+				var reservation = new GlideRecord(this.R_TABLE);
+				reservation.addQuery("thing", thing.getValue("sys_id"));
+				reservation.addQuery("thing_table", thing.getRecordClassName());
+				reservation.addQuery("reserved_from", from.toString());
+				reservation.addQuery("reserved_to", until.toString());
+				reservation.addQuery("reserved_by", by.getValue("sys_id"));
+				reservation.query();
+				
+				if (reservation.next()) {
+					var thing_id = reservation.getValue("thing");
+					var thing_table = reservation.getValue("thing_table");
+					reservation.deleteRecord();
+				}
+			},
+			
+			nextAvailableReservation : function(/*GlideRecord*/ thing) {
+				
+				//this is a really simplistic model that just returns 5 minutes later than the end date for the last reservation
+				var reservation = new GlideRecord(this.R_TABLE);
+				reservation.addQuery("thing", thing.getUniqueValue());
+				reservation.addQuery("thing_table", thing.getRecordClassName());
+				reservation.addQuery("reserved_to", ">", new GlideDateTime());
+				reservation.orderByDesc("reserved_to");
+				reservation.query();
+				
+				if (reservation.hasNext()) {
+					var minimum_seconds = parseInt(gs.getProperty("x_bn.min_reservation_seconds", 300), 10);
+					var hasUntil = new GlideDateTime();
+					hasUntil.setNumericValue(reservation.reserved_to.getNumericValue());
+					hasUntil.addSeconds(minimum_seconds);
+					
+					return hasUntil;
+				}
+				
+				//or right now, if the thing has never been reserved or all reservations are in the past
+				return new GlideDateTime();
+			},
+			
+			_hasRequiredParams : function(/*GlideRecord*/ thing, /*GlideDateTime*/ from, /*GlideDateTime*/ until, /*User sys_id*/ by) {
+				
+				//values provided?
+				if (!thing || !from || !until)
+					return false;
+				
+				if (!(thing instanceof GlideRecord) && !(thing instanceof GlideRecordSecure))
+					return false;
+				
+				if (!(from instanceof GlideDateTime))
+					return false;
+				
+				if (!(until instanceof GlideDateTime))
+					return false;
+				
+				return true;
+			},
+			
+			type: 'ThingReserver'
+		};]]></script>
         <sys_class_name>sys_script_include</sys_class_name>
         <sys_created_by>admin</sys_created_by>
         <sys_created_on>2018-04-25 16:13:53</sys_created_on>
         <sys_id>f6db6ab7b32113009b67a13816a8dc96</sys_id>
-        <sys_mod_count>3</sys_mod_count>
+        <sys_mod_count>4</sys_mod_count>
         <sys_name>ThingReserver</sys_name>
         <sys_package display_value="BookNow" source="x_bn">fa506eb3b32113009b67a13816a8dc58</sys_package>
         <sys_policy>read</sys_policy>
         <sys_scope display_value="BookNow">fa506eb3b32113009b67a13816a8dc58</sys_scope>
         <sys_update_name>sys_script_include_f6db6ab7b32113009b67a13816a8dc96</sys_update_name>
         <sys_updated_by>admin</sys_updated_by>
-        <sys_updated_on>2018-05-03 23:06:25</sys_updated_on>
+        <sys_updated_on>2018-10-17 14:56:10</sys_updated_on>
     </sys_script_include>
 </record_update>
